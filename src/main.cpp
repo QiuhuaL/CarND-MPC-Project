@@ -87,68 +87,65 @@ int main() {
         string event = j[0].get<string>();
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          vector<double> ptsx = j[1]["ptsx"];
-          vector<double> ptsy = j[1]["ptsy"];
-          double px = j[1]["x"];
-          double py = j[1]["y"];
-          double psi = j[1]["psi"];
-          double v = j[1]["speed"];
+		  //note : A singular unity unit in the simulator is equivalent to 1 meter.
+          vector<double> ptsx = j[1]["ptsx"]; //The global x positions of the waypoints.
+          vector<double> ptsy = j[1]["ptsy"]; //The global y positions of the waypoints
+          double px = j[1]["x"];      //The global x position of the vehicle.
+          double py = j[1]["y"];      //The global y position of the vehicle.
+          double psi = j[1]["psi"];  // The orientation of the vehicle in radians converted from the Unity format to the standard format
+          double v = j[1]["speed"];  //The speed of the vehicle in mph
+		  double delta = j[1]["steering_angle"];  //The current steering angle in radians.
+          double a = j[1]["throttle"];  //the current throttle value [-1, 1].
           /*
           * TODO: Calculate steering angle and throttle using MPC.
           *
           * Both are in between [-1, 1].
           *
           */
-          
-          //transform into car space
+          //transform the waypoints into vehicle space
           Eigen::VectorXd ptsx_car(ptsx.size());
           Eigen::VectorXd ptsy_car(ptsy.size());
-          
           for (unsigned int i = 0; i < ptsx.size(); i++) {
             double x = ptsx[i] - px;
             double y = ptsy[i] - py;
             ptsx_car[i] = x * cos(-psi) - y * sin(-psi);
             ptsy_car[i] = x * sin(-psi) + y * cos(-psi);
           }
-          
-                   
-          // Fits a 3rd-order polynomial to the above x and y coordinates
+                             
+          // Fits a 3rd-order polynomial to the above x and y coordinates for reference trajectory in vehicle space
           Eigen::VectorXd coeffs = polyfit(ptsx_car, ptsy_car, 3);
           
           // Calculates the cross track error
           // Because points were transformed to vehicle coordinates, x & y equal 0 below.
           // 'y' would otherwise be subtracted from the polyeval value
+          double cte0 = coeffs[0];  
+          double epsi0 = -atan(coeffs[1]);
           
-          double cte = coeffs[0];
-          double epsi = -atan(coeffs[1]);
-          // Center of gravity related to psi and epsi
+		  // Center of gravity related to psi and epsi
           const double Lf = 2.67;
-           // Latency for actuation
+          // Latency for actuation
           const double latency = 0.1;
+                   
+          // Calculate the predicted state after latency time based on motion model equations
+          // current state components x, y and psi are all zero after transformed to vehicle space 
+		  // x0 = y0 = psi0 = 0 
+          double px1 = v * latency;  // x0 +  v * cos(psi0) * latency
+          double py1 = 0.0 ;        //  y0 +  v * sin(psi0) * latency
+          double psi1 =  v *  (-delta) * latency / Lf;
+          double v1 = v + a * latency;
+          double cte1 = cte0 + v * sin(epsi) * latency;
+          double epsi1 =  epsi0  + v * (-delta) *latency / Lf ;
 
-          double delta = j[1]["steering_angle"];
-          double a = j[1]["throttle"];
-          
-          // state after latency , at the moment of real control
-          // x, y and psi are all zero after transformed to car space
-          double control_px = v * latency; //starts at x = y = 0, and psi = 0.0, cos(psi0) = 1
-          double control_py = 0.0 ;              //   v * sin(psi0) * latency, sin(psi0)  = 0
-          double control_psi =  v *  (-delta) * latency / Lf;
-          double control_v = v + a * latency;
-          double control_cte = cte + v * sin(epsi) * latency;
-          double control_epsi =  epsi  + v * (-delta) *latency / Lf ;
-
-          //state after latency
+          //push the state after latency in to state vector 
           Eigen::VectorXd state(6);
-          state << control_px, control_py, control_psi, control_v, control_cte, control_epsi;
+          state << px1, py1, psi1, v1, cte1, epsi1;
           
           // New actuations with latency
           auto vars = mpc.Solve(state, coeffs);
           
-          // Calculate steering and throttle, converty steer_value to [-1, 1]
+          // Calculate steering and throttle, convert steer_value to [-1, 1]
           double steer_value = vars[0] / (deg2rad(25));
           double throttle_value = vars[1];
-
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.

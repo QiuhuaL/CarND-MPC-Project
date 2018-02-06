@@ -20,25 +20,27 @@ double dt = 0.05;
 // Lf was tuned until the the radius formed by the simulating the model
 // presented in the classroom matched the previous radius.
 //
-// This is the length from front to CoG that has a similar radius.
-
 
 // This is the length from front to CoG that has a similar radius.
-const double Lf = 2.67;
+const double Lf = 2.67;  // in meters 
 
 
 //reference value for speed
-double ref_v = 60;  //miles for hour
+double ref_v = 60;  //miles for hour  
 
 
-size_t x_start = 0;
-size_t y_start = x_start + N;
-size_t psi_start = y_start + N;
-size_t v_start = psi_start + N;
-size_t cte_start = v_start + N;
-size_t epsi_start = cte_start + N;
-size_t delta_start = epsi_start + N;
-size_t a_start = delta_start + N - 1;
+// the start indice for each component in the vars vector:
+// vars contains all variables used by the cost function and model
+//[x,y,ψ,v,cte,eψ] and [δ,a]
+
+size_t x_start = 0;   //states x
+size_t y_start = x_start + N; //states y
+size_t psi_start = y_start + N;  //states orientation
+size_t v_start = psi_start + N;  //states velocity
+size_t cte_start = v_start + N;   // cte error 
+size_t epsi_start = cte_start + N; // orientation error 
+size_t delta_start = epsi_start + N; // actuators for steering
+size_t a_start = delta_start + N - 1;  //actuators for acceleration
 
 
 class FG_eval {
@@ -54,40 +56,39 @@ class FG_eval {
     // NOTE: You'll probably go back and forth between this function and
     // the Solver function below.
 
-    // weights for each cost function part
+    // weights for each cost function part, adjusted manually 
     const double cte_weight = 500;  //cte error
     const double epsi_weight = 500;  // orientation error
     const double v_weight   = 1;     //velocity
     const double delta_weight = 5;   // control angle
     const double a_weight = 5;       //acceleration 
     const double delta_smooth_weight = 50000;  //steering smoothing
-    const double a_smooth_weight = 5;   //acceration smoothing 
+    const double a_smooth_weight = 5;   //acceleration smoothing 
     
+	//the cost fg[0].
     fg[0] = 0 ;
 
-    //cost on cte, epsi, velocity 
+    //cost on cte (cross track error), epsi (orientation), velocity (to avoid stopping) based on reference state 
     for (unsigned int t = 0; t < N; t++) {
       fg[0] += cte_weight * CppAD::pow(vars[cte_start + t], 2);
       fg[0] += epsi_weight * CppAD::pow(vars[epsi_start + t], 2);
       fg[0] += v_weight * CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
    
-
-    //cost for steering and acceleration 
+    //cost for steering and acceleration magnitude to minimize the use of actuators  
     for (unsigned  int t = 0; t < N-1; t++) {
       fg[0] += delta_weight * CppAD::pow(vars[delta_start + t], 2);
       fg[0] += a_weight * CppAD::pow(vars[a_start + t], 2);
     }
    
-   //cost for change of actuators stering and acceleration to make the control smoother
+   //cost for change rate of actuators (steering and acceleration) to make the control smoother 
     for (unsigned  int t = 0; t < N-2; t++) {
       fg[0] += delta_smooth_weight * pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
       fg[0] += a_smooth_weight * pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
    
-    // Initialization & constraints
-    
-    // Initial constraints
+    // Initialization & constraints    
+    // Initial constraints, t = 0
     // Add 1 to each of the starting indices due to cost being located at index 0 of `fg`.
     fg[1 + x_start] = vars[x_start];
     fg[1 + y_start] = vars[y_start];
@@ -96,8 +97,10 @@ class FG_eval {
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
     
-    for (unsigned  int t = 1; t < N; t++) {
-      // State at time t + 1
+	//constraints based on vehicle model 
+    for (unsigned int t = 1; t < N; t++) {
+      
+	  // State at time t + 1 
       AD<double> x1 = vars[x_start + t];
       AD<double> y1 = vars[y_start + t];
       AD<double> psi1 = vars[psi_start + t];
@@ -113,18 +116,29 @@ class FG_eval {
       AD<double> cte0 = vars[cte_start + t - 1];
       AD<double> epsi0 = vars[epsi_start + t - 1];
       
-      // Constrol constraints at time t0
+      // Only need to consider the actuation at time t
       AD<double> delta0 = vars[delta_start + t - 1];
       AD<double> a0 = vars[a_start + t - 1];
-
+      
+	  //fitted trajectory reference line  - 3rd order polynomial
       AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * pow(x0, 2) + coeffs[3] * pow(x0, 3);
       AD<double> psi_des0 = CppAD::atan(coeffs[1] + 2*coeffs[2]*x0 + 3*coeffs[3]*pow(x0,2));
+	  
+	 // The idea here is to constraint this value to be 0.
+	 // Recall the equations for the model:
+	 // x_[t] = x[t-1] + v[t-1] * cos(psi[t-1]) * dt
+	 // y_[t] = y[t-1] + v[t-1] * sin(psi[t-1]) * dt
+	 // psi_[t] = psi[t-1] + v[t-1] / Lf * delta[t-1] * dt
+	 // v_[t] = v[t-1] + a[t-1] * dt
+ 	 // cte[t] = f(x[t-1]) - y[t-1] + v[t-1] * sin(epsi[t-1]) * dt
+	 // epsi[t] = psi[t] - psides[t-1] + v[t-1] * delta[t-1] / Lf * dt
       
       fg[1 + x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
       fg[1 + y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
       fg[1 + psi_start + t] = psi1 - (psi0 - v0 * delta0 / Lf * dt);
       fg[1 + v_start + t] = v1 - (v0 + a0 * dt);
-      fg[1 + cte_start + t] = cte1 - ((f0-y0) + (v0 * CppAD::sin(epsi0) * dt));
+	  // two items below including the current cross track error (reference and current value) +  the change in error caused by the vehicle's movement
+      fg[1 + cte_start + t] = cte1 - ((f0-y0) + (v0 * CppAD::sin(epsi0) * dt));  //
       fg[1 + epsi_start + t] = epsi1 - ((psi0 - psi_des0) - v0 * delta0 / Lf * dt);
     }
   }
@@ -158,8 +172,8 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // TODO: Set the number of constraints
   size_t n_constraints = N * 6 ;
 
-  // Initial value of the independent variables.
-  // SHOULD BE 0 besides initial state.
+  // Initial value of all the independent variables.
+  // SHOULD BE 0 besides initial state (at the start indices).
   Dvector vars(n_vars);
   for (unsigned int i = 0; i < n_vars; i++) {
     vars[i] = 0;
@@ -175,8 +189,6 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   Dvector vars_lowerbound(n_vars);
   Dvector vars_upperbound(n_vars);
   // TODO: Set lower and upper limits for variables.
-  
-
   // to the max negative and positive values.
   for (unsigned int i = 0; i < delta_start; i++) {
     vars_lowerbound[i] = -1.0e10;
@@ -189,14 +201,12 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     vars_upperbound[i] = 25 * M_PI / 180;
   }
 
-  
   // The upper and lower limits of Acceleration
   for (unsigned int i = a_start; i < n_vars; i++) {
     vars_lowerbound[i] = -1.0;
     vars_upperbound[i] =  1.0;
   }
   
-
   // Lower and upper limits for the constraints
   // Should be 0 besides initial state.
   Dvector constraints_lowerbound(n_constraints);
@@ -206,8 +216,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     constraints_upperbound[i] = 0;
   }
 
-
-  //constraints, initial state
+  //constraints for the initial state 
   constraints_lowerbound[x_start] = x;
   constraints_lowerbound[y_start] = y;
   constraints_lowerbound[psi_start] = psi;
@@ -262,11 +271,11 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   //
   // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
   // creates a 2 element double vector.
-   // Return the first actuator values, along with predicted x and y values to plot in the simulator.
+  // Return the first actuator values, along with predicted x and y values to plot in the simulator.
   vector<double> result;
-  result.push_back(solution.x[delta_start]);
-  result.push_back(solution.x[a_start]);
-  for (unsigned int i = 0; i < N; ++i) {
+  result.push_back(solution.x[delta_start]);  //steering 
+  result.push_back(solution.x[a_start]);      //acceleration
+  for (unsigned int i = 0; i < N; ++i) {      //predicated x and y values 
     result.push_back(solution.x[x_start + i]);
     result.push_back(solution.x[y_start + i]);
   }
