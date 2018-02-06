@@ -9,22 +9,14 @@ using CppAD::AD;
 // TODO: Set the timestep length and duration
 size_t N = 20;
 double dt = 0.05;
-int latency_ind = 2; //100ms/50ms
-// This value assumes the model presented in the classroom is used.
-//
-// It was obtained by measuring the radius formed by running the vehicle in the
-// simulator around in a circle with a constant steering angle and velocity on a
-// flat terrain.
-//
-// Lf was tuned until the the radius formed by the simulating the model
-// presented in the classroom matched the previous radius.
-//
+
+
 // This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
 
 
 //reference value for speed
-double ref_v = 60;
+double ref_v = 75;
 
 
 size_t x_start = 0;
@@ -62,7 +54,7 @@ class FG_eval {
     fg[0] = 0 ;
 
     //cost on cte, epsi, velocity 
-    for (int t = 0; t < N; t++) {
+    for (unsigned int t = 0; t < N; t++) {
       fg[0] += cte_weight * CppAD::pow(vars[cte_start + t], 2);
       fg[0] += epsi_weight * CppAD::pow(vars[epsi_start + t], 2);
       fg[0] += v_weight * CppAD::pow(vars[v_start + t] - ref_v, 2);
@@ -70,13 +62,13 @@ class FG_eval {
    
 
     //cost for steering and acceleration 
-    for (int t = 0; t < N-1; t++) {
+    for (unsigned  int t = 0; t < N-1; t++) {
       fg[0] += delta_weight * CppAD::pow(vars[delta_start + t], 2);
       fg[0] += a_weight * CppAD::pow(vars[a_start + t], 2);
     }
    
    //cost for change of actuators stering and acceleration to make the control smoother
-    for (int t = 0; t < N-2; t++) {
+    for (unsigned  int t = 0; t < N-2; t++) {
       fg[0] += delta_smooth_weight * pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
       fg[0] += a_smooth_weight * pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
@@ -92,7 +84,7 @@ class FG_eval {
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
     
-    for (int t = 1; t < N; t++) {
+    for (unsigned  int t = 1; t < N; t++) {
       // State at time t + 1
       AD<double> x1 = vars[x_start + t];
       AD<double> y1 = vars[y_start + t];
@@ -116,17 +108,6 @@ class FG_eval {
       AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * pow(x0, 2) + coeffs[3] * pow(x0, 3);
       AD<double> psi_des0 = CppAD::atan(coeffs[1] + 2*coeffs[2]*x0 + 3*coeffs[3]*pow(x0,2));
       
-      // motion model, with psi has a negation: 
-      //Note if \large \deltaδ is positive we rotate counter-clockwise, or turn left
-      // In the simulator however, a positive value implies a right turn and a negative value implies a left turn. 
-      // from class: 
-      // Recall the equations for the model:
-      // x_[t] = x[t-1] + v[t-1] * cos(psi[t-1]) * dt
-      // y_[t] = y[t-1] + v[t-1] * sin(psi[t-1]) * dt
-      // psi_[t] = psi[t-1] + v[t-1] / Lf * delta[t-1] * dt
-      // v_[t] = v[t-1] + a[t-1] * dt
-      // cte[t] = f(x[t-1]) - y[t-1] + v[t-1] * sin(epsi[t-1]) * dt
-       // epsi[t] = psi[t] - psides[t-1] + v[t-1] * delta[t-1] / Lf * dt
       fg[1 + x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
       fg[1 + y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
       fg[1 + psi_start + t] = psi1 - (psi0 - v0 * delta0 / Lf * dt);
@@ -145,7 +126,7 @@ MPC::~MPC() {}
 
 vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   bool ok = true;
-  size_t i;
+  //size_t i;
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
   // TODO: Set the number of model variables (includes both states and inputs).
@@ -168,7 +149,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // Initial value of the independent variables.
   // SHOULD BE 0 besides initial state.
   Dvector vars(n_vars);
-  for (int i = 0; i < n_vars; i++) {
+  for (unsigned int i = 0; i < n_vars; i++) {
     vars[i] = 0;
   }
   //initial state
@@ -185,13 +166,13 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   
 
   // to the max negative and positive values.
-  for (int i = 0; i < delta_start; i++) {
+  for (unsigned int i = 0; i < delta_start; i++) {
     vars_lowerbound[i] = -1.0e10;
     vars_upperbound[i] = 1.0e10;
   }
 
   // The upper and lower limits of delta: -25 and 25 degrees (values in radians).
-  for (int i = delta_start; i < a_start; i++) {
+  for (unsigned int i = delta_start; i < a_start; i++) {
     vars_lowerbound[i] = -25 * M_PI / 180;
     vars_upperbound[i] = 25 * M_PI / 180;
   }
@@ -203,7 +184,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
  // }
 
   // The upper and lower limits of Acceleration
-  for (int i = a_start; i < n_vars; i++) {
+  for (unsigned int i = a_start; i < n_vars; i++) {
     vars_lowerbound[i] = -1.0;
     vars_upperbound[i] =  1.0;
   }
@@ -220,7 +201,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // Should be 0 besides initial state.
   Dvector constraints_lowerbound(n_constraints);
   Dvector constraints_upperbound(n_constraints);
-  for (int i = 0; i < n_constraints; i++) {
+  for (unsigned int i = 0; i < n_constraints; i++) {
     constraints_lowerbound[i] = 0;
     constraints_upperbound[i] = 0;
   }
@@ -285,7 +266,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   vector<double> result;
   result.push_back(solution.x[delta_start]);
   result.push_back(solution.x[a_start]);
-  for (int i = 0; i < N; ++i) {
+  for (unsigned int i = 0; i < N; ++i) {
     result.push_back(solution.x[x_start + i]);
     result.push_back(solution.x[y_start + i]);
   }
