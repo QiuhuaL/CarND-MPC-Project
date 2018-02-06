@@ -104,7 +104,6 @@ int main() {
           Eigen::VectorXd ptsx_car(ptsx.size());
           Eigen::VectorXd ptsy_car(ptsy.size());
           
-          // Transform the points to the vehicle's orientation
           for (unsigned int i = 0; i < ptsx.size(); i++) {
             double x = ptsx[i] - px;
             double y = ptsy[i] - py;
@@ -143,7 +142,7 @@ int main() {
           Eigen::VectorXd state(6);
           state << control_px, control_py, control_psi, control_v, control_cte, control_epsi;
           
-          // New actuations and predicated x and y 
+          // New actuations with latency
           auto vars = mpc.Solve(state, coeffs);
           
           // Calculate steering and throttle, converty steer_value to [-1, 1]

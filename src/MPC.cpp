@@ -11,12 +11,24 @@ size_t N = 20;
 double dt = 0.05;
 
 
+// This value assumes the model presented in the classroom is used.
+//
+// It was obtained by measuring the radius formed by running the vehicle in the
+// simulator around in a circle with a constant steering angle and velocity on a
+// flat terrain.
+//
+// Lf was tuned until the the radius formed by the simulating the model
+// presented in the classroom matched the previous radius.
+//
+// This is the length from front to CoG that has a similar radius.
+
+
 // This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
 
 
 //reference value for speed
-double ref_v = 75;
+double ref_v = 60;  //miles for hour
 
 
 size_t x_start = 0;
@@ -42,13 +54,13 @@ class FG_eval {
     // NOTE: You'll probably go back and forth between this function and
     // the Solver function below.
 
-    // weights for each cost 
+    // weights for each cost function part
     const double cte_weight = 500;  //cte error
     const double epsi_weight = 500;  // orientation error
     const double v_weight   = 1;     //velocity
     const double delta_weight = 5;   // control angle
     const double a_weight = 5;       //acceleration 
-    const double delta_smooth_weight = 50000;  //steering smoothing
+    const double delta_smooth_weight = 5000000;  //steering smoothing
     const double a_smooth_weight = 5;   //acceration smoothing 
     
     fg[0] = 0 ;
@@ -101,10 +113,10 @@ class FG_eval {
       AD<double> cte0 = vars[cte_start + t - 1];
       AD<double> epsi0 = vars[epsi_start + t - 1];
       
-      // Constrol constraints at time t o
+      // Constrol constraints at time t0
       AD<double> delta0 = vars[delta_start + t - 1];
       AD<double> a0 = vars[a_start + t - 1];
-      
+
       AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * pow(x0, 2) + coeffs[3] * pow(x0, 3);
       AD<double> psi_des0 = CppAD::atan(coeffs[1] + 2*coeffs[2]*x0 + 3*coeffs[3]*pow(x0,2));
       
@@ -152,7 +164,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   for (unsigned int i = 0; i < n_vars; i++) {
     vars[i] = 0;
   }
-  //initial state
+  //initial state //not necessary here? 
   vars[x_start] = x;
   vars[y_start] = y;
   vars[psi_start] = psi;
@@ -177,24 +189,12 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     vars_upperbound[i] = 25 * M_PI / 180;
   }
 
-  // During latency time, constraint the limit of delta to be the previous control value
-  //for (int i = delta_start; i < delta_start + latency_ind; i++) {
-    //vars_lowerbound[i] = delta_prev;
-    //vars_upperbound[i] = delta_prev;
- // }
-
+  
   // The upper and lower limits of Acceleration
   for (unsigned int i = a_start; i < n_vars; i++) {
     vars_lowerbound[i] = -1.0;
     vars_upperbound[i] =  1.0;
   }
-
-  // During latency time, constraint the limit of acceleation to be the previous control value
-  //for (int i = a_start; i < a_start+latency_ind; i++) {
-  //  vars_lowerbound[i] = a_prev;
-  //  vars_upperbound[i] = a_prev;
-//  }
-
   
 
   // Lower and upper limits for the constraints
