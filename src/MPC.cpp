@@ -60,7 +60,7 @@ class FG_eval {
     const double v_weight   = 1;     //velocity
     const double delta_weight = 5;   // control angle
     const double a_weight = 5;       //acceleration 
-    const double delta_smooth_weight = 5000000;  //steering smoothing
+    const double delta_smooth_weight = 50000;  //steering smoothing
     const double a_smooth_weight = 5;   //acceration smoothing 
     
     fg[0] = 0 ;
